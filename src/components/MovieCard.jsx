@@ -4,6 +4,7 @@
 
 import Poster from './Poster.jsx';
 import { StreamingBadges } from './StreamingBadge.jsx';
+import { trailerWatchUrl } from '../data/movies.js';
 
 function ScoreChip({ score }) {
   const tone = score >= 90 ? 'text-gold' : score >= 75 ? 'text-violet-soft' : 'text-white/70';
@@ -14,7 +15,7 @@ function ScoreChip({ score }) {
   );
 }
 
-export default function MovieCard({ movie, onAdd, onReject, onWatched, state, compact = false }) {
+export default function MovieCard({ movie, onAdd, onReject, onWatched, onOpenDetails, state, compact = false }) {
   const isWatchlist = state === 'watchlist';
   const isRejected = state === 'rejected';
 
@@ -24,8 +25,13 @@ export default function MovieCard({ movie, onAdd, onReject, onWatched, state, co
         compact ? 'w-40 sm:w-44' : 'w-44 sm:w-52'
       }`}
     >
-      {/* Poster */}
-      <div className="relative aspect-[2/3] overflow-hidden">
+      {/* Poster (click opens full details) */}
+      <button
+        type="button"
+        onClick={() => onOpenDetails?.(movie)}
+        className="relative block aspect-[2/3] w-full overflow-hidden text-left"
+        title={`More about ${movie.title}`}
+      >
         <div className="h-full w-full transition-transform duration-500 ease-out group-hover:scale-110">
           <Poster movie={movie} />
         </div>
@@ -44,16 +50,29 @@ export default function MovieCard({ movie, onAdd, onReject, onWatched, state, co
           </div>
         )}
 
-        {/* Hover-revealed blurb + badges */}
+        {/* Hover-revealed blurb + badges + trailer */}
         <div className="absolute inset-x-0 bottom-0 translate-y-2 p-3 opacity-0 transition-all duration-300 group-hover:translate-y-0 group-hover:opacity-100">
-          <p className="mb-2 line-clamp-3 text-xs leading-snug text-white/80">{movie.critic_blurb}</p>
+          <p className="mb-2 line-clamp-2 text-xs leading-snug text-white/80">{movie.critic_blurb}</p>
           <StreamingBadges movie={movie} />
+          <a
+            href={trailerWatchUrl(movie)}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            className="mt-2 inline-flex items-center gap-1 rounded-full bg-white/10 px-2.5 py-1 text-[10px] font-semibold text-white ring-1 ring-white/15 transition hover:bg-violet/40"
+          >
+            ▶ Trailer
+          </a>
         </div>
-      </div>
+      </button>
 
       {/* Title block */}
       <div className="p-3">
-        <h3 className="truncate text-display text-xl leading-none text-white" title={movie.title}>
+        <h3
+          onClick={() => onOpenDetails?.(movie)}
+          className="cursor-pointer truncate text-display text-xl leading-none text-white transition hover:text-violet-soft"
+          title={movie.title}
+        >
           {movie.title}
         </h3>
         <div className="mt-1 flex items-center gap-2 text-[11px] text-white/45">

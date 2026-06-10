@@ -12,7 +12,7 @@ const MOODS = ['Thrilled', 'Thoughtful', 'Laughing', 'Scared', 'Inspired', 'Feel
 const COMPANY = ['Just me', 'With a partner', 'Friends', 'Family'];
 const AVOID = ['Horror', 'Subtitles', 'Sad endings', 'Anything over 2h', 'Nothing — surprise me'];
 
-export default function AgentModal({ open, onClose, profile, profileApi, onWatched }) {
+export default function AgentModal({ open, onClose, profile, profileApi, onWatched, onOpenDetails }) {
   const [phase, setPhase] = useState('questions'); // questions | thinking | result | error
   const [mood, setMood] = useState('');
   const [company, setCompany] = useState('');
@@ -152,6 +152,7 @@ export default function AgentModal({ open, onClose, profile, profileApi, onWatch
                     onAdd={profileApi?.addToWatchlist}
                     onReject={profileApi?.rejectMovie}
                     onWatched={onWatched}
+                    onOpenDetails={onOpenDetails}
                   />
                 </div>
               )}
@@ -171,6 +172,7 @@ export default function AgentModal({ open, onClose, profile, profileApi, onWatch
                     onAdd={profileApi?.addToWatchlist}
                     onReject={profileApi?.rejectMovie}
                     onWatched={onWatched}
+                    onOpenDetails={onOpenDetails}
                   />
                 </div>
               )}

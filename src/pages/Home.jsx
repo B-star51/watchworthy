@@ -6,7 +6,7 @@ import { localReasoningEngine } from '../lib/agent.js';
 import HeroCard from '../components/HeroCard.jsx';
 import MovieRow from '../components/MovieRow.jsx';
 
-export default function Home({ profile, profileApi, onAskAgent, onWatched }) {
+export default function Home({ profile, profileApi, onAskAgent, onWatched, onOpenDetails }) {
   // The hero pick reuses the same local reasoning engine the agent falls back
   // to — so "Picked for You" is genuinely personalised to the onboarding mood
   // and watch history, with zero network dependency on page load.
@@ -44,6 +44,7 @@ export default function Home({ profile, profileApi, onAskAgent, onWatched }) {
         reason={heroRec.explanation}
         onAdd={profileApi.addToWatchlist}
         onAskAgent={onAskAgent}
+        onOpenDetails={onOpenDetails}
         isOnWatchlist={profileApi.isOnWatchlist(hero.id)}
       />
 
@@ -63,6 +64,7 @@ export default function Home({ profile, profileApi, onAskAgent, onWatched }) {
         movies={trending}
         profileApi={profileApi}
         onWatched={onWatched}
+        onOpenDetails={onOpenDetails}
       />
 
       <MovieRow
@@ -71,6 +73,7 @@ export default function Home({ profile, profileApi, onAskAgent, onWatched }) {
         movies={acclaimed}
         profileApi={profileApi}
         onWatched={onWatched}
+        onOpenDetails={onOpenDetails}
       />
 
       <MovieRow
@@ -79,6 +82,7 @@ export default function Home({ profile, profileApi, onAskAgent, onWatched }) {
         movies={inCinema}
         profileApi={profileApi}
         onWatched={onWatched}
+        onOpenDetails={onOpenDetails}
         emptyHint="No cinema releases match your filters."
       />
     </div>

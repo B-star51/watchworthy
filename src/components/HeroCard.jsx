@@ -4,8 +4,9 @@
 
 import Poster from './Poster.jsx';
 import { StreamingBadges } from './StreamingBadge.jsx';
+import { trailerWatchUrl } from '../data/movies.js';
 
-export default function HeroCard({ movie, label = 'Picked for You', reason, onAdd, onAskAgent, isOnWatchlist }) {
+export default function HeroCard({ movie, label = 'Picked for You', reason, onAdd, onAskAgent, onOpenDetails, isOnWatchlist }) {
   if (!movie) return null;
 
   return (
@@ -60,6 +61,7 @@ export default function HeroCard({ movie, label = 'Picked for You', reason, onAd
           )}
 
           <div className="mt-5 flex flex-wrap items-center gap-3">
+            <span className="text-[11px] uppercase tracking-widest text-white/40">Where to watch</span>
             <StreamingBadges movie={movie} />
           </div>
 
@@ -71,6 +73,22 @@ export default function HeroCard({ movie, label = 'Picked for You', reason, onAd
             >
               {isOnWatchlist ? '✓ On your watchlist' : '✅ Add to Watchlist'}
             </button>
+            <a
+              href={trailerWatchUrl(movie)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="rounded-xl bg-white/10 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-white/20"
+            >
+              ▶ Watch Trailer
+            </a>
+            {onOpenDetails && (
+              <button
+                onClick={() => onOpenDetails(movie)}
+                className="rounded-xl bg-white/10 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-white/20"
+              >
+                ℹ Details
+              </button>
+            )}
             <button
               onClick={onAskAgent}
               className="rounded-xl bg-white/10 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-white/20"

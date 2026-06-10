@@ -307,6 +307,61 @@ export const movies = [
   },
 ];
 
+// ──────────────────────────────────────────────────────────────────────────
+// Trailers
+// Verified official YouTube trailer IDs for the marquee titles (these embed
+// inline). Any movie without an entry falls back to a YouTube *search* link for
+// "<title> <year> official trailer" — which always lands on the right trailer,
+// so every movie has a working trailer link and there are no dead embeds.
+// ──────────────────────────────────────────────────────────────────────────
+const TRAILER_IDS = {
+  1: 'YoHD9XEInc0', // Inception — Official Trailer #1
+  2: 'aQDxVZJouSo', // Parasite — NEON Official Trailer
+  3: '_PZpmTj1Q8Q', // The Dark Knight — Original Theatrical Trailer
+  4: 'zSWdZVtXT7E', // Interstellar — Official WB Trailer
+  14: 'WUBQdC__fC4', // Dune: Part Two — Official Trailer
+  15: 'wxN1T1uxQ2g', // Everything Everywhere All at Once — A24 Official Trailer
+};
+
+// YouTube search URL for a movie's trailer (used as the universal fallback).
+export function trailerSearchUrl(movie) {
+  const q = encodeURIComponent(`${movie.title} ${movie.year} official trailer`);
+  return `https://www.youtube.com/results?search_query=${q}`;
+}
+
+// Best "open on YouTube" link: the exact verified video if we have one, else search.
+export function trailerWatchUrl(movie) {
+  const id = TRAILER_IDS[movie.id];
+  return id ? `https://www.youtube.com/watch?v=${id}` : trailerSearchUrl(movie);
+}
+
+// Privacy-friendly embed URL — only returned when we have a verified video ID,
+// so we never embed the wrong clip.
+export function trailerEmbedUrl(movie) {
+  const id = TRAILER_IDS[movie.id];
+  return id ? `https://www.youtube-nocookie.com/embed/${id}?rel=0` : null;
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// "Where to watch" deep links
+// Each platform links to its search page for the title (stable, no broken
+// per-title slugs). Cinema releases link to a showtimes search instead.
+// ──────────────────────────────────────────────────────────────────────────
+const STREAMING_SEARCH = {
+  Netflix: (q) => `https://www.netflix.com/search?q=${q}`,
+  'Prime Video': (q) => `https://www.amazon.com/s?k=${q}&i=instant-video`,
+  'Disney+': (q) => `https://www.disneyplus.com/search?q=${q}`,
+};
+
+export function streamingUrl(platform, movie) {
+  const build = STREAMING_SEARCH[platform];
+  return build ? build(encodeURIComponent(movie.title)) : null;
+}
+
+export function showtimesUrl(movie) {
+  return `https://www.google.com/search?q=${encodeURIComponent(`${movie.title} showtimes near me`)}`;
+}
+
 // Helper: find a movie record by its title (case-insensitive). Used to turn the
 // agent's text picks back into full movie objects for rendering.
 export function findMovieByTitle(title) {

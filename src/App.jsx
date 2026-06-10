@@ -10,6 +10,7 @@ import OnboardingQuiz from './components/OnboardingQuiz.jsx';
 import AgentModal from './components/AgentModal.jsx';
 import FeedbackModal from './components/FeedbackModal.jsx';
 import SettingsModal from './components/SettingsModal.jsx';
+import MovieDetailsModal from './components/MovieDetailsModal.jsx';
 
 function NavBar({ onSettings, watchlistCount }) {
   const linkClass = ({ isActive }) =>
@@ -55,8 +56,10 @@ export default function App() {
   const [agentOpen, setAgentOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [feedbackMovie, setFeedbackMovie] = useState(null);
+  const [detailsMovie, setDetailsMovie] = useState(null);
 
   const openFeedback = (movie) => setFeedbackMovie(movie);
+  const openDetails = (movie) => setDetailsMovie(movie);
 
   return (
     <HashRouter>
@@ -73,12 +76,20 @@ export default function App() {
                   profileApi={profileApi}
                   onAskAgent={() => setAgentOpen(true)}
                   onWatched={openFeedback}
+                  onOpenDetails={openDetails}
                 />
               }
             />
             <Route
               path="/profile"
-              element={<Profile profile={profile} profileApi={profileApi} onWatched={openFeedback} />}
+              element={
+                <Profile
+                  profile={profile}
+                  profileApi={profileApi}
+                  onWatched={openFeedback}
+                  onOpenDetails={openDetails}
+                />
+              }
             />
           </Routes>
         </main>
@@ -103,6 +114,7 @@ export default function App() {
           profile={profile}
           profileApi={profileApi}
           onWatched={openFeedback}
+          onOpenDetails={openDetails}
         />
 
         {/* Post-watch feedback */}
@@ -118,6 +130,15 @@ export default function App() {
 
         {/* Settings */}
         <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+
+        {/* Movie details — trailer + where to watch */}
+        <MovieDetailsModal
+          open={Boolean(detailsMovie)}
+          movie={detailsMovie}
+          onClose={() => setDetailsMovie(null)}
+          profileApi={profileApi}
+          onWatched={openFeedback}
+        />
 
         <footer className="mx-auto max-w-7xl px-4 pb-28 pt-10 text-center text-xs text-white/25 sm:px-6">
           WatchWorthy · AI film curation · Built for the Microsoft Agents League Hackathon

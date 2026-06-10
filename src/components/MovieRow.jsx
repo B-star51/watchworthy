@@ -3,7 +3,7 @@
 import { useRef } from 'react';
 import MovieCard from './MovieCard.jsx';
 
-export default function MovieRow({ title, subtitle, movies, profileApi, onWatched, emptyHint }) {
+export default function MovieRow({ title, subtitle, movies, profileApi, onWatched, onOpenDetails, emptyHint }) {
   const scroller = useRef(null);
 
   const scrollBy = (dir) => {
@@ -57,6 +57,7 @@ export default function MovieRow({ title, subtitle, movies, profileApi, onWatche
               onAdd={profileApi?.addToWatchlist}
               onReject={profileApi?.rejectMovie}
               onWatched={onWatched}
+              onOpenDetails={onOpenDetails}
             />
           ))}
         </div>

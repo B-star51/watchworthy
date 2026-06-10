@@ -4,7 +4,7 @@ import { useMemo } from 'react';
 import { findMovieByTitle } from '../data/movies.js';
 import MovieCard from '../components/MovieCard.jsx';
 
-export default function Profile({ profile, profileApi, onWatched }) {
+export default function Profile({ profile, profileApi, onWatched, onOpenDetails }) {
   const watched = profile.watchHistory || [];
 
   // Loved genres: tally genres of films rated 4+ or marked "Loved it".
@@ -75,6 +75,7 @@ export default function Profile({ profile, profileApi, onWatched }) {
                 state="watchlist"
                 onWatched={onWatched}
                 onReject={profileApi.rejectMovie}
+                onOpenDetails={onOpenDetails}
               />
             ))}
           </div>
