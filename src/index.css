@@ -1,0 +1,64 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Global CSS variables (the only hand-written CSS in the app) ───────────── */
+:root {
+  --ink: #0a0a0f;
+  --surface: #12121a;
+  --violet: #7c3aed;
+  --gold: #f59e0b;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background-color: var(--ink);
+  color: #e7e7ee;
+  font-family: 'Inter', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  /* Subtle cinematic vignette so the near-black never looks flat. */
+  background-image: radial-gradient(120% 80% at 50% -10%, rgba(124, 58, 237, 0.12), transparent 60%),
+    radial-gradient(100% 60% at 100% 0%, rgba(245, 158, 11, 0.06), transparent 50%);
+  background-attachment: fixed;
+}
+
+/* Tabular numerals for ratings / data. */
+.tnum {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum';
+}
+
+/* Hide scrollbars on the horizontal movie rows but keep them scrollable. */
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* Thin styled scrollbar for vertical panels. */
+.thin-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+.thin-scroll::-webkit-scrollbar-thumb {
+  background: rgba(124, 58, 237, 0.4);
+  border-radius: 999px;
+}
+
+@layer utilities {
+  .text-display {
+    font-family: 'Bebas Neue', 'Playfair Display', serif;
+    letter-spacing: 0.02em;
+  }
+  .text-editorial {
+    font-family: 'Playfair Display', serif;
+  }
+}
