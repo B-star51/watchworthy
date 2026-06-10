@@ -23,9 +23,13 @@
 //     explanation: string }
 //
 // PROVIDERS — the same agent can be driven by two different model backends:
-//   • "anthropic" → Claude (claude-sonnet-4-20250514) via the Messages API.
+//   • "anthropic" → Claude (claude-sonnet-4-6) via the Messages API, run as a
+//                   genuine TOOL-USE LOOP: Claude calls filter_by_mood_and_time,
+//                   check_user_history, and score_candidates; we execute each
+//                   tool locally against the dataset and feed the result back,
+//                   iterating until it returns the final JSON. See callAnthropic.
 //   • "github"    → a GitHub-hosted model via the GitHub Models inference API
-//                   (this is the optional "GitHub agent").
+//                   (the optional "GitHub agent") — single-shot structured call.
 //
 // RELIABILITY — if no key is configured, or the network/model call fails, we fall
 // back to a fully local scoring engine (`localReasoningEngine`) that mirrors the
@@ -35,8 +39,10 @@
 
 import { movies, findMovieByTitle } from '../data/movies.js';
 
-const ANTHROPIC_MODEL = 'claude-sonnet-4-20250514';
+const ANTHROPIC_MODEL = 'claude-sonnet-4-6';
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
+// Cap on agent tool-use iterations so a misbehaving loop can never hang the UI.
+const MAX_AGENT_STEPS = 8;
 
 // GitHub Models inference endpoint (OpenAI-compatible chat completions).
 const GITHUB_MODEL = 'openai/gpt-4o-mini';
@@ -163,6 +169,119 @@ function summariseLovedGenres(profile) {
     .join(', ');
 }
 
+// ── Agent tools ──────────────────────────────────────────────────────────────
+// These power the real multi-step tool-use loop on the Anthropic path. The
+// schemas (filter_by_mood_and_time / check_user_history / score_candidates) were
+// drafted with GitHub Copilot; the implementations here are wired to the actual
+// dataset fields (mood_tags / duration_mins / critic_score).
+
+const AGENT_TOOLS = [
+  {
+    name: 'filter_by_mood_and_time',
+    description:
+      'Return movies from the catalogue whose mood_tags include the given mood and whose runtime fits the time budget.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        mood: { type: 'string', description: 'Mood tag, e.g. thrilled, thoughtful, laughing, scared, inspired, feel-good' },
+        max_minutes: { type: 'number', description: 'Maximum runtime in minutes (omit for no limit)' },
+      },
+      required: ['mood'],
+    },
+  },
+  {
+    name: 'check_user_history',
+    description: "Return the user's watched titles, rejected titles, loved genres, and onboarding preferences.",
+    input_schema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'score_candidates',
+    description: 'Score candidate movie titles on critic score and how well their genres match the user\'s loved genres.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        titles: { type: 'array', items: { type: 'string' }, description: 'Exact movie titles to score' },
+      },
+      required: ['titles'],
+    },
+  },
+];
+
+// Executes a tool call locally against the dataset + profile. Returns a plain
+// object that gets JSON-stringified back into the tool_result block.
+function runAgentTool(name, input, { profile }) {
+  const slim = (m) => ({
+    title: m.title,
+    genre: m.genre,
+    mood_tags: m.mood_tags,
+    duration_mins: m.duration_mins,
+    critic_score: m.critic_score,
+    streaming: m.in_cinema ? ['In Cinema'] : m.streaming,
+  });
+
+  if (name === 'filter_by_mood_and_time') {
+    const mood = String(input.mood || '').toLowerCase();
+    const max = Number.isFinite(input.max_minutes) ? input.max_minutes : Infinity;
+    const matches = movies.filter(
+      (m) => (!mood || m.mood_tags.includes(mood)) && m.duration_mins <= max,
+    );
+    return { count: matches.length, movies: matches.map(slim) };
+  }
+
+  if (name === 'check_user_history') {
+    return {
+      watched: (profile?.watchHistory || []).map((h) => ({ title: h.title, rating: h.rating, verdict: h.verdict })),
+      rejected: (profile?.rejected || []).map((r) => r.title || r),
+      loved_genres: (summariseLovedGenres(profile) || '').split(', ').filter(Boolean),
+      onboarding_mood: profile?.mood || null,
+      time_preference: profile?.timePreference || null,
+      last_loved: profile?.lastLoved || null,
+    };
+  }
+
+  if (name === 'score_candidates') {
+    const loved = new Set((summariseLovedGenres(profile) || '').split(', ').filter(Boolean));
+    return {
+      scored: (input.titles || []).map((t) => {
+        const m = findMovieByTitle(t);
+        if (!m) return { title: t, error: 'not in dataset' };
+        let score = m.critic_score / 20;
+        const genreMatches = m.genre.filter((g) => loved.has(g));
+        score += genreMatches.length * 2;
+        return {
+          title: m.title,
+          critic_score: m.critic_score,
+          genre_matches: genreMatches,
+          duration_mins: m.duration_mins,
+          total_score: Math.round(score * 10) / 10,
+        };
+      }),
+    };
+  }
+
+  return { error: `Unknown tool: ${name}` };
+}
+
+// Lean task message for the tool-use path — it lists only titles (so the model
+// can't hallucinate a film) and pushes it to use the tools to do the reasoning.
+function buildAgentTaskMessage({ sessionAnswers }) {
+  const titles = movies.map((m) => m.title).join(', ');
+  return `A user wants a movie recommendation right now.
+
+This session — what they just told you:
+- Mood right now: ${sessionAnswers?.mood || 'unspecified'}
+- Watching: ${sessionAnswers?.company || 'unspecified'}
+- Wants to avoid: ${sessionAnswers?.avoid || 'nothing in particular'}
+
+The catalogue contains ONLY these titles (never recommend anything else): ${titles}.
+
+Do the work with your tools, in order:
+1. call check_user_history to see what they've watched/rejected and which genres they love,
+2. call filter_by_mood_and_time with their mood and a sensible time budget,
+3. call score_candidates on the most promising survivors,
+then return ONLY the final JSON object.`;
+}
+
 // ── Response parsing ─────────────────────────────────────────────────────────
 
 function extractJson(text) {
@@ -194,30 +313,64 @@ function shapeResult(raw, source) {
 
 // ── Provider calls ───────────────────────────────────────────────────────────
 
+// Real multi-step tool-use agent loop (Claude Messages API, browser-direct).
+// Claude calls our tools, we execute them locally against the dataset/profile,
+// feed the tool_result back, and repeat until it returns its final JSON answer.
 async function callAnthropic({ profile, sessionAnswers, apiKey }) {
-  const res = await fetch(ANTHROPIC_URL, {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-      // Required to call the API directly from a browser.
-      'anthropic-dangerous-direct-browser-access': 'true',
-    },
-    body: JSON.stringify({
-      model: ANTHROPIC_MODEL,
-      max_tokens: 1024,
-      system: SYSTEM_PROMPT,
-      messages: [{ role: 'user', content: buildUserMessage({ profile, sessionAnswers }) }],
-    }),
-  });
-  if (!res.ok) {
-    const detail = await res.text().catch(() => '');
-    throw new Error(`Anthropic API ${res.status}: ${detail.slice(0, 200)}`);
+  const headers = {
+    'content-type': 'application/json',
+    'x-api-key': apiKey,
+    'anthropic-version': '2023-06-01',
+    // Required to call the API directly from a browser.
+    'anthropic-dangerous-direct-browser-access': 'true',
+  };
+
+  const messages = [{ role: 'user', content: buildAgentTaskMessage({ sessionAnswers }) }];
+
+  for (let step = 0; step < MAX_AGENT_STEPS; step++) {
+    const res = await fetch(ANTHROPIC_URL, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        model: ANTHROPIC_MODEL,
+        max_tokens: 1500,
+        system: SYSTEM_PROMPT,
+        tools: AGENT_TOOLS,
+        messages,
+      }),
+    });
+    if (!res.ok) {
+      const detail = await res.text().catch(() => '');
+      throw new Error(`Anthropic API ${res.status}: ${detail.slice(0, 200)}`);
+    }
+    const data = await res.json();
+
+    // Keep the assistant turn (incl. tool_use blocks) in history.
+    messages.push({ role: 'assistant', content: data.content });
+
+    if (data.stop_reason === 'tool_use') {
+      // Execute every tool the model asked for, then send the results back.
+      const toolResults = data.content
+        .filter((b) => b.type === 'tool_use')
+        .map((b) => {
+          let output;
+          try {
+            output = runAgentTool(b.name, b.input || {}, { profile });
+          } catch (err) {
+            output = { error: err.message };
+          }
+          return { type: 'tool_result', tool_use_id: b.id, content: JSON.stringify(output) };
+        });
+      messages.push({ role: 'user', content: toolResults });
+      continue;
+    }
+
+    // Final answer — pull the JSON out of the text blocks.
+    const text = (data.content || []).filter((c) => c.type === 'text').map((c) => c.text).join('');
+    return shapeResult(extractJson(text), 'anthropic');
   }
-  const data = await res.json();
-  const text = (data.content || []).map((c) => c.text || '').join('');
-  return shapeResult(extractJson(text), 'anthropic');
+
+  throw new Error(`Agent did not finish within ${MAX_AGENT_STEPS} tool-use steps`);
 }
 
 async function callGithub({ profile, sessionAnswers, token }) {
