@@ -97,26 +97,34 @@ export function activeProviderStatus() {
 
 // ── Prompt construction ──────────────────────────────────────────────────────
 
-const SYSTEM_PROMPT = `You are WatchWorthy's recommendation agent. You reason carefully through movie choices in multiple steps before giving a final answer.
+const SYSTEM_PROMPT = `You are WatchWorthy's recommendation agent. You reason carefully and transparently.
 
-When recommending a movie, follow this exact reasoning chain:
-1. Analyse the user's mood and time available
-2. Cross-reference their watch history and rejected movies
-3. Filter the available movies by mood tags and duration
-4. Score each candidate against the user's stated preferences
-5. Select the top pick and a backup
-6. Write a personalised explanation referencing specific things the user told you
+When recommending a movie, follow these exact steps:
+1. Parse the user's current mood and time available
+2. Review their full watch history — note patterns in genres and ratings
+3. Identify and exclude all rejected movies
+4. Score remaining candidates using genre match, mood match, and critic score
+5. Factor in any live critic data available for cinema releases
+6. Select primary pick (highest combined score) and a backup pick
+7. Write a personalised explanation referencing specific things about this user
 
 Rules:
-- Only ever recommend movies that exist in the provided dataset. Use the EXACT title string.
-- Never recommend a movie that appears in the user's watch history or rejected list.
+- Only ever recommend movies that exist in the dataset. Use the EXACT title string.
+- Never recommend a movie in the user's watch history or rejected list.
 - Respect anything the user asked to avoid (e.g. horror, subtitles, sad endings).
 - If nothing is a perfect fit, pick the closest reasonable match and say so honestly.
 
-Always show your reasoning steps before giving the final recommendation. Respond with ONLY a JSON object (no markdown, no prose around it) with keys:
-  reasoning_steps (array of short strings, one per step),
-  primary_pick (movie title, exact),
-  backup_pick (movie title, exact),
+Return ONLY a JSON object (no markdown, no prose around it) with keys:
+  reasoning_steps (array of short strings, one per step, e.g.
+    "Mood detected: thrilled — filtering for thrilled tags",
+    "Watch history reviewed: 3 films, top genres: Sci-Fi, Thriller",
+    "Removed 1 rejected film from consideration",
+    "Scored 12 candidates — top scorer: Parasite at 99%",
+    "Live critic data factored in for cinema releases",
+    "Primary pick selected: Parasite"),
+  primary_pick (exact movie title from dataset),
+  backup_pick (exact movie title from dataset),
+  watchworthy_score (integer 0-100, how well the primary pick fits THIS user),
   explanation (string, warm and personal, 2-3 sentences).`;
 
 // Builds the single user-turn message that carries all the structured context.
@@ -307,6 +315,7 @@ function shapeResult(raw, source) {
       : [String(raw.reasoning_steps || 'Reasoned through mood, time and history.')],
     primary_pick: primary || backup,
     backup_pick: backup && backup !== primary ? backup : null,
+    watchworthy_score: Number.isFinite(raw.watchworthy_score) ? raw.watchworthy_score : null,
     explanation: raw.explanation || 'Here is a pick I think fits your mood right now.',
   };
 }
@@ -525,6 +534,93 @@ export async function recommendMovie({ profile, sessionAnswers }) {
   const local = localReasoningEngine({ profile, sessionAnswers });
   local.fallbackNotice = 'No API key configured — using WatchWorthy\'s built-in local reasoning engine. Add a key in Settings (⚙) for the live Claude agent.';
   return local;
+}
+
+// ── "Convince Me" — a short, personalised pitch for one film ───────────────────
+// Uses the live provider when a key is set, else a deterministic local pitch so
+// the feature always returns something compelling (demo-safe).
+
+const PITCH_SYSTEM = `You are WatchWorthy's persuasion agent. Write a punchy, personalised 3-sentence pitch for why THIS specific user should watch THIS specific film tonight.
+
+Rules:
+- Reference something specific from their watch history or preferences
+- Make it feel like a friend who knows their taste is recommending it
+- End with one killer reason they specifically will love it
+- Maximum 3 sentences. No fluff. Make it compelling.
+- Do NOT start with "I" or "You should"`;
+
+function buildPitchMessage(movie, profile) {
+  return `User taste profile:
+- Current mood: ${profile?.mood || 'unknown'}
+- Loved genres: ${summariseLovedGenres(profile) || 'unknown'}
+- Last loved: ${profile?.lastLoved || 'not provided'}
+- Recently watched: ${JSON.stringify((profile?.watchHistory || []).slice(-5).map((h) => h.title))}
+
+Film to pitch: ${movie.title} (${movie.year}) — ${movie.genre.join(', ')}.
+Critic note: ${movie.critic_blurb}
+Mood tags: ${movie.mood_tags.join(', ')}. Director: ${movie.director}. Critic score: ${movie.critic_score}%.`;
+}
+
+function localPitch(movie, profile) {
+  const loved = (summariseLovedGenres(profile) || '').split(', ').filter(Boolean);
+  const hook = loved.find((g) => movie.genre.includes(g));
+  const a = hook
+    ? `Right in your ${hook} wheelhouse — ${movie.title} hits the exact register you keep coming back to.`
+    : `${movie.title} is the kind of film that actually rewards a real night in.`;
+  const b = `${movie.director} is working at full power here, and at ${movie.critic_score}% the critics back it up.`;
+  const c = profile?.lastLoved
+    ? `If you loved ${profile.lastLoved}, this scratches the same itch — press play tonight.`
+    : `It's ${movie.duration_mins} minutes you won't want back — press play tonight.`;
+  return `${a} ${b} ${c}`;
+}
+
+export async function convinceMe(movie, profile) {
+  const s = getAgentSettings();
+  try {
+    if (s.anthropicKey) {
+      const res = await fetch(ANTHROPIC_URL, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-api-key': s.anthropicKey,
+          'anthropic-version': '2023-06-01',
+          'anthropic-dangerous-direct-browser-access': 'true',
+        },
+        body: JSON.stringify({
+          model: ANTHROPIC_MODEL,
+          max_tokens: 220,
+          system: PITCH_SYSTEM,
+          messages: [{ role: 'user', content: buildPitchMessage(movie, profile) }],
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const text = (data.content || []).filter((c) => c.type === 'text').map((c) => c.text).join('').trim();
+        if (text) return { pitch: text, source: 'anthropic' };
+      }
+    } else if (s.githubToken) {
+      const res = await fetch(GITHUB_URL, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${s.githubToken}` },
+        body: JSON.stringify({
+          model: GITHUB_MODEL,
+          temperature: 0.7,
+          messages: [
+            { role: 'system', content: PITCH_SYSTEM },
+            { role: 'user', content: buildPitchMessage(movie, profile) },
+          ],
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const text = data.choices?.[0]?.message?.content?.trim();
+        if (text) return { pitch: text, source: 'github' };
+      }
+    }
+  } catch {
+    /* fall through to local */
+  }
+  return { pitch: localPitch(movie, profile), source: 'local' };
 }
 
 export default recommendMovie;

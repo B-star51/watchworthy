@@ -1,10 +1,14 @@
 // MovieCard — the signature browse card.
 // On hover the poster zooms and a gradient overlay reveals the critic score,
-// streaming badges and critic blurb. No click needed to see the key info.
+// streaming badges and critic blurb. Also shows the personalised WatchWorthy
+// Score, and a "Convince Me" button that flips the card to a tailored pitch.
 
+import { useState } from 'react';
 import Poster from './Poster.jsx';
 import { StreamingBadges } from './StreamingBadge.jsx';
 import { trailerWatchUrl } from '../data/movies.js';
+import { calculateWatchWorthyScore, scoreTone } from '../lib/watchworthyScore.js';
+import { convinceMe } from '../lib/agent.js';
 
 function ScoreChip({ score }) {
   const tone = score >= 90 ? 'text-gold' : score >= 75 ? 'text-violet-soft' : 'text-white/70';
@@ -15,9 +19,51 @@ function ScoreChip({ score }) {
   );
 }
 
-export default function MovieCard({ movie, onAdd, onReject, onWatched, onOpenDetails, state, compact = false }) {
+const WW_TONE = {
+  violet: 'bg-violet/20 text-violet-soft ring-violet/40',
+  amber: 'bg-gold/20 text-gold ring-gold/40',
+  grey: 'bg-white/5 text-white/55 ring-white/10',
+};
+
+// The personalised WatchWorthy Score badge (or the "unlock" hint).
+export function WatchWorthyBadge({ ww, className = '' }) {
+  if (!ww) {
+    return (
+      <span
+        className={`inline-flex items-center rounded-lg bg-white/5 px-2 py-1 text-[10px] font-medium text-white/40 ring-1 ring-white/10 ${className}`}
+      >
+        Rate films to unlock your score
+      </span>
+    );
+  }
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-[11px] font-bold uppercase tracking-wide ring-1 ${WW_TONE[scoreTone(ww.score)]} ${className}`}
+      title={`Critic ${ww.breakdown.critic}% · genre fit ${ww.breakdown.genreBonus} · mood fit ${ww.breakdown.moodBonus}`}
+    >
+      <span className="grid h-3.5 w-3.5 place-items-center rounded-[3px] bg-current/20 text-[8px]">WW</span>
+      {ww.score}% for you
+    </span>
+  );
+}
+
+export default function MovieCard({ movie, onAdd, onReject, onWatched, onOpenDetails, userProfile, state, compact = false }) {
   const isWatchlist = state === 'watchlist';
   const isRejected = state === 'rejected';
+  const ww = calculateWatchWorthyScore(movie, userProfile);
+
+  const [showPitch, setShowPitch] = useState(false);
+  const [pitch, setPitch] = useState('');
+  const [pitchLoading, setPitchLoading] = useState(false);
+
+  const runConvince = async () => {
+    setShowPitch(true);
+    setPitchLoading(true);
+    setPitch('');
+    const res = await convinceMe(movie, userProfile);
+    setPitch(res.pitch);
+    setPitchLoading(false);
+  };
 
   return (
     <div
@@ -39,7 +85,7 @@ export default function MovieCard({ movie, onAdd, onReject, onWatched, onOpenDet
         {/* Always-on bottom gradient for legibility */}
         <div className="pointer-events-none absolute inset-x-0 bottom-0 h-2/3 bg-gradient-to-t from-ink via-ink/60 to-transparent" />
 
-        {/* Top-right score */}
+        {/* Top-right critic score */}
         <div className="absolute right-2 top-2 rounded-md bg-ink/70 px-1.5 py-0.5 backdrop-blur">
           <ScoreChip score={movie.critic_score} />
         </div>
@@ -81,8 +127,21 @@ export default function MovieCard({ movie, onAdd, onReject, onWatched, onOpenDet
           <span className="truncate">{movie.genre.join(' · ')}</span>
         </div>
 
+        {/* WatchWorthy Score */}
+        <div className="mt-2">
+          <WatchWorthyBadge ww={ww} />
+        </div>
+
+        {/* Convince me */}
+        <button
+          onClick={runConvince}
+          className="mt-2 w-full rounded-lg bg-white/5 px-2 py-1.5 text-[11px] font-semibold text-violet-soft ring-1 ring-violet/20 transition hover:bg-violet/15"
+        >
+          💬 Convince me
+        </button>
+
         {/* Actions */}
-        <div className="mt-3 flex gap-2">
+        <div className="mt-2 flex gap-2">
           {isWatchlist ? (
             <button
               onClick={() => onWatched?.(movie)}
@@ -112,6 +171,45 @@ export default function MovieCard({ movie, onAdd, onReject, onWatched, onOpenDet
           </button>
         </div>
       </div>
+
+      {/* ── "Convince Me" pitch overlay ──────────────────────────────────── */}
+      {showPitch && (
+        <div className="absolute inset-0 z-20 flex flex-col bg-gradient-to-br from-[#1a1230] via-surface-2 to-ink/95 p-4 ring-1 ring-violet/40 animate-scale-in">
+          <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-violet-soft">
+            Why you, tonight
+          </p>
+
+          <div className="flex-1 overflow-y-auto thin-scroll">
+            {pitchLoading ? (
+              <p className="text-sm italic text-white/60">
+                Crafting your pitch
+                <span className="animate-pulse">…</span>
+              </p>
+            ) : (
+              <p className="text-[13px] italic leading-relaxed text-white/90">{pitch}</p>
+            )}
+          </div>
+
+          <div className="mt-3 flex gap-2">
+            <button
+              onClick={() => {
+                onAdd?.(movie);
+                setShowPitch(false);
+              }}
+              disabled={pitchLoading || isWatchlist}
+              className="flex-1 rounded-lg bg-violet px-2 py-1.5 text-[11px] font-semibold text-white transition hover:bg-violet-soft disabled:opacity-50"
+            >
+              ✅ Add to Watchlist
+            </button>
+            <button
+              onClick={() => setShowPitch(false)}
+              className="rounded-lg bg-white/10 px-2 py-1.5 text-[11px] font-semibold text-white/70 transition hover:bg-white/20"
+            >
+              Still not convinced
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

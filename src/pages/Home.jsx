@@ -5,6 +5,7 @@ import { movies, findMovieByTitle } from '../data/movies.js';
 import { localReasoningEngine } from '../lib/agent.js';
 import HeroCard from '../components/HeroCard.jsx';
 import MovieRow from '../components/MovieRow.jsx';
+import CriticFeed from '../components/CriticFeed.jsx';
 
 export default function Home({ profile, profileApi, onAskAgent, onWatched, onOpenDetails }) {
   // The hero pick reuses the same local reasoning engine the agent falls back
@@ -45,8 +46,11 @@ export default function Home({ profile, profileApi, onAskAgent, onWatched, onOpe
         onAdd={profileApi.addToWatchlist}
         onAskAgent={onAskAgent}
         onOpenDetails={onOpenDetails}
+        userProfile={profile}
         isOnWatchlist={profileApi.isOnWatchlist(hero.id)}
       />
+
+      {inCinema.length > 0 && <CriticFeed movies={inCinema} onOpenDetails={onOpenDetails} />}
 
       {matchesMood.length > 0 && (
         <MovieRow
@@ -55,6 +59,7 @@ export default function Home({ profile, profileApi, onAskAgent, onWatched, onOpe
           movies={matchesMood}
           profileApi={profileApi}
           onWatched={onWatched}
+          onOpenDetails={onOpenDetails}
         />
       )}
 

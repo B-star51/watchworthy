@@ -5,9 +5,17 @@
 import Poster from './Poster.jsx';
 import { StreamingBadges } from './StreamingBadge.jsx';
 import { trailerWatchUrl } from '../data/movies.js';
+import { calculateWatchWorthyScore, scoreTone } from '../lib/watchworthyScore.js';
 
-export default function HeroCard({ movie, label = 'Picked for You', reason, onAdd, onAskAgent, onOpenDetails, isOnWatchlist }) {
+const HERO_TONE = {
+  violet: 'text-violet-soft',
+  amber: 'text-gold',
+  grey: 'text-white/60',
+};
+
+export default function HeroCard({ movie, label = 'Picked for You', reason, onAdd, onAskAgent, onOpenDetails, userProfile, isOnWatchlist }) {
   if (!movie) return null;
+  const ww = calculateWatchWorthyScore(movie, userProfile);
 
   return (
     <section className="relative overflow-hidden rounded-3xl ring-1 ring-white/10">
@@ -48,6 +56,19 @@ export default function HeroCard({ movie, label = 'Picked for You', reason, onAd
             <span className="h-1 w-1 rounded-full bg-white/20" />
             <span>{movie.genre.join(' · ')}</span>
           </div>
+
+          {ww && (
+            <div className="mt-4 inline-flex items-center gap-3 rounded-2xl bg-white/5 px-4 py-2.5 ring-1 ring-white/10">
+              <span className={`tnum text-display text-4xl leading-none ${HERO_TONE[scoreTone(ww.score)]}`}>
+                {ww.score}%
+              </span>
+              <span className="text-xs font-semibold uppercase tracking-widest text-white/50">
+                WatchWorthy
+                <br />
+                Matched to your taste
+              </span>
+            </div>
+          )}
 
           <p className="mt-4 max-w-xl text-editorial text-lg italic leading-relaxed text-white/85">
             “{movie.critic_blurb}”

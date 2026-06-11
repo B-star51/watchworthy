@@ -76,6 +76,7 @@ export default function Profile({ profile, profileApi, onWatched, onOpenDetails 
                 onWatched={onWatched}
                 onReject={profileApi.rejectMovie}
                 onOpenDetails={onOpenDetails}
+                userProfile={profile}
               />
             ))}
           </div>

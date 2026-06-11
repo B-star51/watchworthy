@@ -3,9 +3,10 @@
 // 2. Calls the recommendation agent (Claude or GitHub model, with local fallback).
 // 3. Renders the agent's MULTI-STEP REASONING, then the primary + backup picks.
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import Modal from './Modal.jsx';
 import MovieCard from './MovieCard.jsx';
+import AgentThinking from './AgentThinking.jsx';
 import { recommendMovie, activeProviderStatus } from '../lib/agent.js';
 
 const MOODS = ['Thrilled', 'Thoughtful', 'Laughing', 'Scared', 'Inspired', 'Feel-good'];
@@ -20,12 +21,19 @@ export default function AgentModal({ open, onClose, profile, profileApi, onWatch
   const [result, setResult] = useState(null);
   const status = activeProviderStatus();
 
+  // The result only reveals once BOTH the thinking animation has finished AND
+  // the recommendation has resolved — so the reasoning trace is never cut short.
+  const animDoneRef = useRef(false);
+  const resultRef = useRef(null);
+
   const reset = () => {
     setPhase('questions');
     setMood('');
     setCompany('');
     setAvoid('');
     setResult(null);
+    animDoneRef.current = false;
+    resultRef.current = null;
   };
 
   const handleClose = () => {
@@ -34,19 +42,31 @@ export default function AgentModal({ open, onClose, profile, profileApi, onWatch
     setTimeout(reset, 300);
   };
 
+  const maybeFinish = () => {
+    if (!animDoneRef.current || !resultRef.current) return;
+    const rec = resultRef.current;
+    setResult(rec);
+    setPhase(rec.error ? 'error' : 'result');
+  };
+
+  const handleThinkingDone = () => {
+    animDoneRef.current = true;
+    maybeFinish();
+  };
+
   const run = async () => {
+    animDoneRef.current = false;
+    resultRef.current = null;
     setPhase('thinking');
     try {
-      const rec = await recommendMovie({
+      resultRef.current = await recommendMovie({
         profile,
         sessionAnswers: { mood, company, avoid },
       });
-      setResult(rec);
-      setPhase('result');
     } catch (err) {
-      setResult({ error: err.message });
-      setPhase('error');
+      resultRef.current = { error: err.message };
     }
+    maybeFinish();
   };
 
   const sourceLabel = {
@@ -90,15 +110,13 @@ export default function AgentModal({ open, onClose, profile, profileApi, onWatch
           </div>
         )}
 
-        {/* ── THINKING ────────────────────────────────────────────────── */}
+        {/* ── THINKING (live reasoning trace) ─────────────────────────── */}
         {phase === 'thinking' && (
-          <div className="animate-fade-in py-10 text-center">
-            <div className="mx-auto mb-5 h-12 w-12 animate-spin rounded-full border-2 border-white/10 border-t-violet" />
-            <p className="text-display text-2xl text-white">Reasoning through the catalogue…</p>
-            <p className="mt-2 text-sm text-white/45">
-              Analysing mood, cross-referencing your history, scoring candidates.
-            </p>
-          </div>
+          <AgentThinking
+            profile={profile}
+            sessionAnswers={{ mood, company, avoid }}
+            onDone={handleThinkingDone}
+          />
         )}
 
         {/* ── RESULT ──────────────────────────────────────────────────── */}
@@ -142,6 +160,7 @@ export default function AgentModal({ open, onClose, profile, profileApi, onWatch
                   <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-gold">Top pick</p>
                   <MovieCard
                     movie={result.primary_pick}
+                    userProfile={profile}
                     state={
                       profileApi?.isOnWatchlist?.(result.primary_pick.id)
                         ? 'watchlist'
@@ -162,6 +181,7 @@ export default function AgentModal({ open, onClose, profile, profileApi, onWatch
                   <MovieCard
                     movie={result.backup_pick}
                     compact
+                    userProfile={profile}
                     state={
                       profileApi?.isOnWatchlist?.(result.backup_pick.id)
                         ? 'watchlist'

@@ -58,6 +58,7 @@ export default function MovieRow({ title, subtitle, movies, profileApi, onWatche
               onReject={profileApi?.rejectMovie}
               onWatched={onWatched}
               onOpenDetails={onOpenDetails}
+              userProfile={profileApi?.profile}
             />
           ))}
         </div>
