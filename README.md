@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/banner.svg" alt="WatchWorthy — an AI film curator that reasons like a friend who knows your taste" width="100%" />
+</p>
+
 # 🎬 WatchWorthy
 
 **An AI movie recommendation engine that *reasons* its way to your next film.**
