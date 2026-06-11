@@ -35,7 +35,7 @@ export default function SettingsModal({ open, onClose }) {
               active={provider === 'anthropic'}
               onClick={() => setProvider('anthropic')}
               title="Claude"
-              subtitle="claude-sonnet-4"
+              subtitle="claude-sonnet-4-20250514"
               emoji="🧠"
             />
             <ProviderCard
